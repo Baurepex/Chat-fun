@@ -16,174 +16,28 @@ const MAX_USERNAME_LENGTH    = 32;
 const MAX_HISTORY            = 50;
 const CODE_LENGTH            = 9;
 
-// Verify rate-limit
 const MAX_VERIFY_ATTEMPTS    = 5;
 const VERIFY_WINDOW_MS       = 60 * 1000;
 
-// Chat message rate-limit (per socket)
-const MSG_RATE_MAX           = 4;           // max messages …
-const MSG_RATE_WINDOW_MS     = 3000;        // … per 3 seconds
+const MSG_RATE_MAX           = 4;
+const MSG_RATE_WINDOW_MS     = 3000;
 
-// IP-level verify rate-limit
 const MAX_VERIFY_ATTEMPTS_IP = 15;
 const VERIFY_IP_WINDOW_MS    = 60 * 1000;
 
 const MAX_SESSIONS_PER_CODE  = 3;
-const UNVERIFIED_TIMEOUT_MS  = 30 * 1000;  // kick unverified after 30 s
+const UNVERIFIED_TIMEOUT_MS  = 30 * 1000;
 
-// Prevent codeUsage memory growth
 const MAX_CODE_USAGE_ENTRIES = 20;
 
 // ─────────────────────────────────────────────
 //  Environment Variables
 // ─────────────────────────────────────────────
-const DISCORD_WEBHOOK_LOGS = process.env.DISCORD_WEBHOOK_LOGS;
-const DISCORD_WEBHOOK_CHAT = process.env.DISCORD_WEBHOOK_CHAT;
-const ADMIN_SECRET         = process.env.ADMIN_SECRET;
-
-// For Render.com: ALLOWED_ORIGIN should be set to 'https://starblast.io' in env vars.
-// During local dev you can set it to '*' or 'http://localhost:PORT'.
+const ADMIN_SECRET   = process.env.ADMIN_SECRET;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://starblast.io';
 
 // ─────────────────────────────────────────────
-//  LZ-String (server-side, for Discord logging)
-//  Inline implementation — no extra npm dep needed.
-// ─────────────────────────────────────────────
-// Minimal decompressFromUTF16 port so Discord logs show readable text.
-// Source: https://github.com/pieroxy/lz-string (MIT)
-const LZString = (() => {
-    const keyStrUriSafe = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$';
-    const baseReverseDic = {};
-
-    function getBaseValue(alphabet, character) {
-        if (!baseReverseDic[alphabet]) {
-            baseReverseDic[alphabet] = {};
-            for (let i = 0; i < alphabet.length; i++) {
-                baseReverseDic[alphabet][alphabet.charAt(i)] = i;
-            }
-        }
-        return baseReverseDic[alphabet][character];
-    }
-
-    function _decompress(length, resetValue, getNextValue) {
-        const dictionary = [];
-        let next, enlargeIn = 4, dictSize = 4, numBits = 3, entry = '', result = [];
-        let i, w, bits, resb, maxpower, power, c;
-        let data = { val: getNextValue(0), position: resetValue, index: 1 };
-
-        for (i = 0; i < 3; i++) dictionary[i] = i;
-
-        bits = 0; maxpower = Math.pow(2, 2); power = 1;
-        while (power != maxpower) {
-            resb = data.val & data.position;
-            data.position >>= 1;
-            if (data.position == 0) {
-                data.position = resetValue;
-                data.val = getNextValue(data.index++);
-            }
-            bits |= (resb > 0 ? 1 : 0) * power;
-            power <<= 1;
-        }
-
-        switch (next = bits) {
-            case 0:
-                bits = 0; maxpower = Math.pow(2, 8); power = 1;
-                while (power != maxpower) {
-                    resb = data.val & data.position;
-                    data.position >>= 1;
-                    if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
-                    bits |= (resb > 0 ? 1 : 0) * power;
-                    power <<= 1;
-                }
-                c = String.fromCharCode(bits);
-                break;
-            case 1:
-                bits = 0; maxpower = Math.pow(2, 16); power = 1;
-                while (power != maxpower) {
-                    resb = data.val & data.position;
-                    data.position >>= 1;
-                    if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
-                    bits |= (resb > 0 ? 1 : 0) * power;
-                    power <<= 1;
-                }
-                c = String.fromCharCode(bits);
-                break;
-            case 2:
-                return '';
-        }
-
-        dictionary[3] = c; w = c; result.push(c);
-
-        while (true) {
-            if (data.index > length) return '';
-
-            bits = 0; maxpower = Math.pow(2, numBits); power = 1;
-            while (power != maxpower) {
-                resb = data.val & data.position;
-                data.position >>= 1;
-                if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
-                bits |= (resb > 0 ? 1 : 0) * power;
-                power <<= 1;
-            }
-
-            switch (c = bits) {
-                case 0:
-                    bits = 0; maxpower = Math.pow(2, 8); power = 1;
-                    while (power != maxpower) {
-                        resb = data.val & data.position;
-                        data.position >>= 1;
-                        if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
-                        bits |= (resb > 0 ? 1 : 0) * power;
-                        power <<= 1;
-                    }
-                    dictionary[dictSize++] = String.fromCharCode(bits);
-                    c = dictSize - 1;
-                    enlargeIn--;
-                    break;
-                case 1:
-                    bits = 0; maxpower = Math.pow(2, 16); power = 1;
-                    while (power != maxpower) {
-                        resb = data.val & data.position;
-                        data.position >>= 1;
-                        if (data.position == 0) { data.position = resetValue; data.val = getNextValue(data.index++); }
-                        bits |= (resb > 0 ? 1 : 0) * power;
-                        power <<= 1;
-                    }
-                    dictionary[dictSize++] = String.fromCharCode(bits);
-                    c = dictSize - 1;
-                    enlargeIn--;
-                    break;
-                case 2:
-                    return result.join('');
-            }
-
-            if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
-
-            if (dictionary[c]) { entry = dictionary[c]; }
-            else if (c === dictSize) { entry = w + w.charAt(0); }
-            else { return null; }
-
-            result.push(entry);
-            dictionary[dictSize++] = w + entry.charAt(0);
-            enlargeIn--;
-            if (enlargeIn == 0) { enlargeIn = Math.pow(2, numBits); numBits++; }
-            w = entry;
-        }
-    }
-
-    function decompressFromUTF16(compressed) {
-        if (compressed == null) return '';
-        if (compressed == '') return null;
-        return _decompress(compressed.length, 16384, (index) => {
-            return compressed.charCodeAt(index) - 32;
-        });
-    }
-
-    return { decompressFromUTF16 };
-})();
-
-// ─────────────────────────────────────────────
-//  Socket.IO — restricted CORS
+//  Socket.IO
 // ─────────────────────────────────────────────
 const io = socketIO(server, {
     cors: {
@@ -211,7 +65,7 @@ function requireAdminAuth(req, res, next) {
 }
 
 // ─────────────────────────────────────────────
-//  Input Validation Helpers
+//  Input Validation
 // ─────────────────────────────────────────────
 function sanitizeString(str, maxLength) {
     if (typeof str !== 'string') return null;
@@ -235,7 +89,6 @@ function isValidHexColor(color) {
     return typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color);
 }
 
-// Hue must be a number in [0, 360]
 function isValidHue(hue) {
     return hue === null || hue === undefined || (typeof hue === 'number' && isFinite(hue) && hue >= 0 && hue <= 360);
 }
@@ -267,104 +120,11 @@ class CircularBuffer {
 }
 
 // ─────────────────────────────────────────────
-//  Discord Webhook Queue
-// ─────────────────────────────────────────────
-const discordQueue = [];
-let discordProcessing = false;
-
-async function sendDiscordWebhook(webhookUrl, content, embed = null) {
-    if (!webhookUrl) return;
-    discordQueue.push({ webhookUrl, content, embed });
-    if (!discordProcessing) processDiscordQueue();
-}
-
-async function processDiscordQueue() {
-    if (discordQueue.length === 0) { discordProcessing = false; return; }
-    discordProcessing = true;
-    const { webhookUrl, content, embed } = discordQueue.shift();
-    try {
-        const payload = {};
-        if (content) payload.content = content;
-        if (embed)   payload.embeds  = [embed];
-        const response = await fetch(webhookUrl, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(payload)
-        });
-        if (!response.ok) console.error('Discord Webhook Error:', response.status);
-    } catch (error) {
-        console.error('Discord Webhook Error:', error.message);
-    }
-    setTimeout(processDiscordQueue, 500);
-}
-
-// ─────────────────────────────────────────────
-//  Discord Log Functions
-// ─────────────────────────────────────────────
-function discordLogSuccess(username, code) {
-    sendDiscordWebhook(DISCORD_WEBHOOK_LOGS, null, {
-        title:       '✅ Successful Verification',
-        description: `**${username}** has verified`,
-        color:       0x00ff88,
-        fields:      [
-            { name: 'Code', value: code, inline: true },
-            { name: 'Time', value: new Date().toLocaleString('en-US'), inline: true }
-        ],
-        timestamp: new Date().toISOString()
-    });
-}
-
-function discordLogFailed(username, code) {
-    sendDiscordWebhook(DISCORD_WEBHOOK_LOGS, null, {
-        title:       '❌ Failed Verification',
-        description: `**${username}** tried invalid code`,
-        color:       0xff0000,
-        fields:      [
-            { name: 'Attempted Code', value: code, inline: true },
-            { name: 'Time', value: new Date().toLocaleString('en-US'), inline: true }
-        ],
-        timestamp: new Date().toISOString()
-    });
-}
-
-function discordLogConnect(username, code) {
-    sendDiscordWebhook(DISCORD_WEBHOOK_LOGS, null, {
-        title:       '🔌 User Connected',
-        description: `**${username}** joined the chat`,
-        color:       0x0099ff,
-        fields:      [
-            { name: 'Code', value: code, inline: true },
-            { name: 'Time', value: new Date().toLocaleString('en-US'), inline: true }
-        ],
-        timestamp: new Date().toISOString()
-    });
-}
-
-function discordLogDisconnect(username, code) {
-    sendDiscordWebhook(DISCORD_WEBHOOK_LOGS, null, {
-        title:       '🔴 User Disconnected',
-        description: `**${username}** left the chat`,
-        color:       0x808080,
-        fields:      [
-            { name: 'Code', value: code, inline: true },
-            { name: 'Time', value: new Date().toLocaleString('en-US'), inline: true }
-        ],
-        timestamp: new Date().toISOString()
-    });
-}
-
-function discordLogChatMessage(username, compressedMessage) {
-    // Decompress before sending to Discord so logs are readable
-    const readable = LZString.decompressFromUTF16(compressedMessage) || compressedMessage;
-    sendDiscordWebhook(DISCORD_WEBHOOK_CHAT, `**${username}:** ${readable}`);
-}
-
-// ─────────────────────────────────────────────
 //  Whitelist
 // ─────────────────────────────────────────────
 const WHITELIST_PATH = path.join(__dirname, 'whitelist.txt');
 let whitelist = new Set();
-let codeUsage = {};  // { "CODE": ["username1", ...] }
+let codeUsage = {};
 
 function loadWhitelist() {
     try {
@@ -375,16 +135,16 @@ function loadWhitelist() {
                 const code = line.split('#')[0].trim().toUpperCase();
                 if (code.length === CODE_LENGTH) whitelist.add(code);
             });
-            console.log(`✅ Whitelist loaded: ${whitelist.size} codes`);
+            console.log(`Whitelist loaded: ${whitelist.size} codes`);
         } else {
-            console.log('⚠️  whitelist.txt not found, creating empty file');
+            console.log('whitelist.txt not found, creating empty file');
             fs.writeFileSync(
                 WHITELIST_PATH,
                 '# Enter codes here (9 characters)\n# Example: A3K9X7M2B # for Player1\n'
             );
         }
     } catch (error) {
-        console.error('❌ Error loading whitelist:', error);
+        console.error('Error loading whitelist:', error);
     }
 }
 
@@ -396,7 +156,7 @@ function trackCodeUsage(code, username) {
             codeUsage[upper].shift();
         }
         codeUsage[upper].push(username);
-        console.log(`📊 Code ${upper} used by "${username}"`);
+        console.log(`Code ${upper} used by "${username}"`);
     }
 }
 
@@ -411,15 +171,11 @@ function getActiveSessionsForCode(code) {
 // ─────────────────────────────────────────────
 //  State
 // ─────────────────────────────────────────────
-const clients        = new Map();  // socketId → client object
-const messageHistory = new CircularBuffer(MAX_HISTORY);
-
-// Per-socket rate-limit buckets
-const verifyAttempts = new Map();  // socketId → { count, resetAt }
-const msgAttempts    = new Map();  // socketId → { count, resetAt }
-
-// Per-IP verify rate-limit
-const ipVerifyAttempts = new Map();  // ip → { count, resetAt }
+const clients          = new Map();
+const messageHistory   = new CircularBuffer(MAX_HISTORY);
+const verifyAttempts   = new Map();
+const msgAttempts      = new Map();
+const ipVerifyAttempts = new Map();
 
 function getClientIP(socket) {
     const forwarded = socket.handshake.headers['x-forwarded-for'];
@@ -438,7 +194,6 @@ function checkIPVerifyLimit(ip) {
     return bucket.count <= MAX_VERIFY_ATTEMPTS_IP;
 }
 
-// Periodic cleanup of expired IP buckets (every 5 minutes)
 setInterval(() => {
     const now = Date.now();
     for (const [ip, bucket] of ipVerifyAttempts.entries()) {
@@ -452,7 +207,7 @@ function broadcastOnlineCount() {
         count: verifiedUsers.length,
         users: verifiedUsers.map(c => c.username)
     });
-    console.log(`📊 Online count: ${verifiedUsers.length}`);
+    console.log(`Online count: ${verifiedUsers.length}`);
 }
 
 // ─────────────────────────────────────────────
@@ -465,14 +220,10 @@ loadWhitelist();
 // ─────────────────────────────────────────────
 app.get('/', (req, res) => {
     res.json({
-        status:            'Server running',
-        time:              new Date().toISOString(),
-        connectedClients:  clients.size,
-        whitelistedCodes:  whitelist.size,
-        discordWebhooksConfigured: {
-            logs: !!DISCORD_WEBHOOK_LOGS,
-            chat: !!DISCORD_WEBHOOK_CHAT
-        }
+        status:           'Server running',
+        time:             new Date().toISOString(),
+        connectedClients: clients.size,
+        whitelistedCodes: whitelist.size
     });
 });
 
@@ -495,7 +246,7 @@ app.get('/admin/code-usage', requireAdminAuth, (req, res) => {
 //  Socket.IO
 // ─────────────────────────────────────────────
 io.on('connection', (socket) => {
-    console.log('🔌 New client connected:', socket.id);
+    console.log('New client connected:', socket.id);
 
     clients.set(socket.id, {
         id:          socket.id,
@@ -505,24 +256,21 @@ io.on('connection', (socket) => {
         connectedAt: new Date()
     });
 
-    // Init rate-limit buckets
     verifyAttempts.set(socket.id, { count: 0, resetAt: Date.now() + VERIFY_WINDOW_MS });
     msgAttempts.set(socket.id,    { count: 0, resetAt: Date.now() + MSG_RATE_WINDOW_MS });
 
     socket.emit('verifyRequired', { message: 'Please verify with /verify CODE' });
 
-    // Auto-kick if still unverified after UNVERIFIED_TIMEOUT_MS
     const unverifiedTimeout = setTimeout(() => {
         const client = clients.get(socket.id);
         if (client && !client.verified) {
-            console.log(`⏱️  Kicking unverified socket: ${socket.id}`);
+            console.log(`Kicking unverified socket: ${socket.id}`);
             socket.disconnect();
         }
     }, UNVERIFIED_TIMEOUT_MS);
 
     // ── Verify Code ──────────────────────────
     socket.on('verifyCode', (data) => {
-        // IP-level check first
         const ip = getClientIP(socket);
         if (!checkIPVerifyLimit(ip)) {
             socket.emit('verifyFailed', { message: 'Too many attempts from your network. Try again later.' });
@@ -530,7 +278,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Socket-level rate limit
         const attempts = verifyAttempts.get(socket.id);
         if (attempts) {
             if (Date.now() > attempts.resetAt) {
@@ -589,20 +336,16 @@ io.on('connection', (socket) => {
             client.username = username;
 
             trackCodeUsage(code, username);
-            console.log(`✅ ${username} verified with code ${code.toUpperCase()}`);
-            discordLogSuccess(username, code.toUpperCase());
+            console.log(`${username} verified with code ${code.toUpperCase()}`);
 
             socket.emit('verifySuccess', { message: 'Verification successful! Welcome to the chat.' });
 
-            // Send history + online users list (matches client's 'welcome' handler)
             socket.emit('welcome', {
                 history:     messageHistory.toArray(),
                 onlineUsers: Array.from(clients.values())
                     .filter(c => c.verified && c.username)
                     .map(c => c.username)
             });
-
-            discordLogConnect(username, code.toUpperCase());
 
             socket.broadcast.emit('userJoined', {
                 username,
@@ -613,8 +356,7 @@ io.on('connection', (socket) => {
             broadcastOnlineCount();
 
         } else {
-            console.log(`❌ Invalid code attempt from "${username}": ${code}`);
-            discordLogFailed(username, code);
+            console.log(`Invalid code attempt from "${username}": ${code}`);
             socket.emit('verifyFailed', { message: 'Code invalid, please try again.' });
         }
     });
@@ -627,7 +369,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // Per-socket message rate limiting
         const msgBucket = msgAttempts.get(socket.id);
         if (msgBucket) {
             if (Date.now() > msgBucket.resetAt) {
@@ -636,7 +377,6 @@ io.on('connection', (socket) => {
             }
             msgBucket.count++;
             if (msgBucket.count > MSG_RATE_MAX) {
-                // 'rateLimited' matches the client-side handler
                 socket.emit('rateLimited', { message: 'You are sending messages too fast.' });
                 return;
             }
@@ -644,39 +384,28 @@ io.on('connection', (socket) => {
 
         if (!data || typeof data !== 'object') return;
 
-        // message is LZ-compressed UTF-16 from the client — keep it as-is for relay.
-        // We only validate that it is a non-empty string within our byte limit.
-        const message = sanitizeString(data.message, MAX_MESSAGE_LENGTH);
+        const message   = sanitizeString(data.message, MAX_MESSAGE_LENGTH);
         if (!isValidMessage(message)) return;
 
         const nameColor = isValidHexColor(data.nameColor) ? data.nameColor : '#ffffff';
-
-        // hue: sent by the client as a number (team mode) or undefined/null (other modes)
-        const hue = isValidHue(data.hue) ? (data.hue ?? null) : null;
-
-        // realUser: the in-game username displayed next to the chat name.
-        // The client reads data.realUser in addChatMessage(), so we must echo it back.
-        // We use the verified username stored on the server as the authoritative value.
-        const realUser = client.username;
+        const hue       = isValidHue(data.hue) ? (data.hue ?? null) : null;
+        const realUser  = client.username;
 
         const msgObj = {
             id:        Date.now() + Math.random(),
             username:  client.username,
-            message,               // still LZ-compressed — client decompresses on render
+            message,
             nameColor,
-            hue,                   // number | null
-            realUser,              // echoed back so the client can show "(realUser)"
+            hue,
+            realUser,
             timestamp: new Date().toISOString(),
             type:      'user'
         };
 
         messageHistory.push(msgObj);
-
-        // Broadcast to ALL connected sockets (including sender for confirmation)
         io.emit('newMessage', msgObj);
 
-        console.log(`💬 ${msgObj.username}: [compressed message]`);
-        discordLogChatMessage(msgObj.username, msgObj.message);
+        console.log(`Message from ${msgObj.username}`);
     });
 
     // ── Disconnect ───────────────────────────
@@ -687,8 +416,7 @@ io.on('connection', (socket) => {
         msgAttempts.delete(socket.id);
 
         if (client && client.verified && client.username) {
-            console.log(`🔌 Disconnected: ${client.username} (Code: ${client.code})`);
-            discordLogDisconnect(client.username, client.code);
+            console.log(`Disconnected: ${client.username} (Code: ${client.code})`);
             socket.broadcast.emit('userLeft', {
                 username:  client.username,
                 message:   `${client.username} left the chat`,
@@ -697,7 +425,7 @@ io.on('connection', (socket) => {
             clients.delete(socket.id);
             broadcastOnlineCount();
         } else {
-            console.log(`🔌 Unverified client disconnected: ${socket.id}`);
+            console.log(`Unverified client disconnected: ${socket.id}`);
             clients.delete(socket.id);
         }
     });
@@ -708,9 +436,8 @@ io.on('connection', (socket) => {
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📋 Whitelist: ${whitelist.size} codes loaded`);
-    console.log(`🌐 CORS origin: ${ALLOWED_ORIGIN}`);
-    console.log(`🔒 Admin auth: ${ADMIN_SECRET ? '✅ Configured' : '❌ ADMIN_SECRET not set – admin routes unprotected!'}`);
-    console.log(`🔔 Discord: ${DISCORD_WEBHOOK_LOGS ? '✅' : '❌'} Logs | ${DISCORD_WEBHOOK_CHAT ? '✅' : '❌'} Chat`);
+    console.log(`Server running on port ${PORT}`);
+    console.log(`Whitelist: ${whitelist.size} codes loaded`);
+    console.log(`CORS origin: ${ALLOWED_ORIGIN}`);
+    console.log(`Admin auth: ${ADMIN_SECRET ? 'Configured' : 'ADMIN_SECRET not set'}`);
 });
