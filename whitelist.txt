@@ -1,0 +1,37 @@
+# Starblast Chat - Whitelist
+# Ein Code pro Zeile, 9-stellig (Zahlen + Buchstaben)
+
+
+Q7R3M5T8W # für Admin
+BING12GAO # für Troller
+
+A9K7T2M5Q # für Hazard
+P4N9X6B3L # für TwiDash
+W2M8Q7R5K # für Xanity 1
+K9T3A8L4P # für Zex 1
+M5Q2R9T7N # für Xavi
+L8P4W3K9T # für Alkan
+R7M2N5X8B # für Ayco
+T3L9Q6P2M # für No1
+Q5B8R1K7W # für Insta
+N2T6M9X3A # für litten2509
+X4P9R7L2T # für Why
+K8M3Q5N7W # für Zamo
+W9T4B2R8L # für Danke
+M7L3K9X5Q # für PaPaTY
+A2R8T6P9N # für Foxy
+Q9W7M3K5L # für Aiden
+HAUR9263F # für Flu
+
+B3L7N2R5Q # für Nyan
+C5T9P4M8K
+D2M6Q7L3T
+E8R3K5N9W
+F4P9T2M6Q
+G7N5L3R8K
+H2Q8M4T9P
+J6R3K7L2M
+K2M5R8Q4T
+L9P3T6M7R
+
+# Weitere Codes hier hinzufügen...
